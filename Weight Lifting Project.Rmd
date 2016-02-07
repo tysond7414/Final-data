@@ -1,0 +1,110 @@
+---
+title: "Weight Lifting Exercises Activity Recognition"
+author: "B. Tyson Dube"
+date: "January 31, 2016"
+output: html_document
+---
+
+## Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity which allows to quantify how much of a particular activity has been done. However, the quality or way of how well a particular activity was performed is rarely evaluated.
+
+## Executive Summary
+
+The goal of this project is to use a machine learning algorithm as part of an attempt to identify mistakes made in weight lifting exercises.  The dataset used was made available the authors* of the 'Wearable Computing: Accelerometers’ Data Classification of Body Postures and Movements paper.
+
+The unique and highly controlled circumstances around the collection of the data allow us to use machine learning to identify with compelling accuracy the mistakes made in weight lifting exercises.
+
+## Getting Started: Exploratory Analysis
+
+First we load the data in a fully reproducible way.
+
+```{r,echo=FALSE}
+temp <- tempfile()
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",temp,method="curl")
+trainRaw <- read.csv(temp, h=T)
+unlink(temp)
+
+temp <- tempfile()
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",temp,method="curl")
+testRaw <- read.csv(temp, h=T)
+unlink(temp)
+```
+
+Inital summary reporting shows that there is incomplete data that must be accounted for before moving forward.  We remove these variables from the selected features.
+
+```{r}
+naCol <- (colSums(is.na(trainRaw)) > 0)
+str(trainRaw[, naCol], list.len=3)
+```
+
+On further analysis we see that the dataset contains several mislabeled factor variables.  These variables can also be removed as they do not add to our analysis.
+
+```{r}
+facCol <- unlist(sapply(trainRaw[1,], is.factor))
+facCol[length(facCol)] <- FALSE
+str(trainRaw[,facCol], list.len=3)
+```
+
+Indices and timestamps can also be removed.
+
+```{r}
+remTag <- rep(F, ncol(trainRaw))
+remTag[1:7] <- T
+str(trainRaw[,remTag],list.len=3)
+```
+
+Create the processed training and validation data.
+
+```{r}
+train <- trainRaw[,!(naCol|facCol|remTag)]
+predNames <- names(train)
+predID <- grep("^classe", predNames, invert=T)
+predNames <- predNames[predID]
+```
+
+```{r}
+suppressMessages(library(caret))
+set.seed(1983)
+trainMod <- createDataPartition(y=train$classe,p=0.8, list=F)
+training <- train[trainMod,]
+crossV <- train[-trainMod,]
+```
+
+## Model Fitting
+
+The data seems well suited for a Random Forest algorithm. This method should work well for this type of classification problem.
+
+```{r}
+suppressMessages(library(randomForest))
+rf <- randomForest(classe~., data=training)
+```
+
+## Cross validation
+
+We use a 2-fold cross validation.
+
+```{r}
+cvP <- predict(rf,crossV[,predNames])
+summaryCv <- confusionMatrix(crossV[, "classe"], cvP)
+summaryCv
+```
+
+The confusion matrix show a 99.67% accuracy level.
+
+## Prediction
+
+Using the Test cases we are able to further test the predictive value of our model.
+
+```{r}
+result <- predict(rf, testRaw[, predNames])
+result
+```
+
+## Conclusion
+
+We were able to achieve a high classification accuracy of 99.67% using a rather basic random forests method.
+
+## References
+
+* Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers’ Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
